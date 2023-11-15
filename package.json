@@ -1,0 +1,20 @@
+{
+  "name": "happy-git",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "bin": {
+    "happy-git": "./index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "conf": "^12.0.0",
+    "picocolors": "^1.0.0",
+    "prompts": "^2.4.2"
+  }
+}
