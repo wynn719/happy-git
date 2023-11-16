@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-const prompts = require("prompts");
-const Commander = require("commander");
-const util = require("util");
-const pc = require('picocolors');
-const exec = util.promisify(require("child_process").exec);
-const packageJson = require("./package.json");
+import prompts from "prompts";
+import Commander from "commander";
+import util from "util";
+import pc from "picocolors";
+import cp from "child_process";
+import packageJson from "./package.json";
+
+const exec = util.promisify(cp.exec);
 
 const program = new Commander.Command(packageJson.name)
   .version(packageJson.version)
@@ -23,13 +25,15 @@ async function cleanGitBranch() {
   const execRes = await exec(
     'git branch --merged=origin/develop | grep -vE "(develop|release|master)"'
   );
-  const branchListString = execRes.stdout ? execRes.stdout.toString().trim() : "";
+  const branchListString = execRes.stdout
+    ? execRes.stdout.toString().trim()
+    : "";
 
   if (branchListString) {
     const deleteList = branchListString
       .split("\n")
       .filter((str) => str)
-      .map((str) => str.replace('*', '').trim())
+      .map((str) => str.replace("*", "").trim())
       .join(" ");
 
     console.log("The following branches will be deleted: \n", deleteList);
@@ -45,13 +49,13 @@ async function createGitBranch() {
   const username = resUserConfig.stdout.toString().trim();
 
   if (!username) {
-    console.log('Git username should be empty');
+    console.log("Git username should be empty");
     process.exit(1);
   }
 
   const res = await prompts({
     type: "select",
-    name: "value",
+    name: "branch",
     message: "Pick branch",
     choices: [
       { title: "feature", value: "feature" },
@@ -61,7 +65,7 @@ async function createGitBranch() {
     initial: 0,
   });
 
-  const { value: branch } = res;
+  const { branch } = res;
 
   if (!branch) {
     process.exit(1);
@@ -73,9 +77,11 @@ async function createGitBranch() {
     message: `Branch name?`,
     validate: (name) => {
       if (!name.trim()) {
-        return 'Branch name should not be empty!';
+        return "Branch name should not be empty!";
       }
-    }
+
+      return true;
+    },
   });
   const { value: branchName } = branchNameRes;
 
@@ -92,7 +98,9 @@ async function createGitBranch() {
 
   console.log(`Create branch: ${fullBranchName}`);
 
-  const { stdout: resGitCo } = await exec(`git checkout -b ${fullBranchName} ${originBaseBranch[branch]}`);
+  const { stdout: resGitCo } = await exec(
+    `git checkout -b ${fullBranchName} ${originBaseBranch[branch as keyof typeof originBaseBranch]}`
+  );
 
   console.log("Create done", resGitCo);
 }

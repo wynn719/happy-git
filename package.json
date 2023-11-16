@@ -4,10 +4,14 @@
   "description": "",
   "main": "index.js",
   "bin": {
-    "happy-git": "./index.js"
+    "happy-git": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsc --module commonjs --watch --outDir dist",
+    "build": "tsc --module commonjs --outDir dist"
   },
   "author": "",
   "license": "MIT",
@@ -16,5 +20,9 @@
     "conf": "^12.0.0",
     "picocolors": "^1.0.0",
     "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/prompts": "^2.4.8",
+    "typescript": "^5.2.2"
   }
 }
