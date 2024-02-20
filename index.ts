@@ -36,11 +36,9 @@ async function cleanGitBranch() {
       .map((str) => str.replace("*", "").trim())
       .join(" ");
 
-    console.log("The following branches will be deleted: \n", deleteList);
-
+    console.log(pc.cyan("The following branches will be deleted: \n"), deleteList);
     const execRes = await exec(`git branch -d ${deleteList}`);
-
-    console.log("Delete completed!", execRes.stdout);
+    console.log(pc.green("Delete completed!"), execRes.stdout);
   }
 }
 
@@ -49,11 +47,11 @@ async function createGitBranch() {
   const username = resUserConfig.stdout.toString().trim();
 
   if (!username) {
-    console.log("Git username should be empty");
+    console.log(pc.red("Git username should be empty"));
     process.exit(1);
   }
 
-  const res = await prompts({
+  const { branch } = await prompts({
     type: "select",
     name: "branch",
     message: "Pick branch",
@@ -65,15 +63,32 @@ async function createGitBranch() {
     initial: 0,
   });
 
-  const { branch } = res;
-
   if (!branch) {
     process.exit(1);
   }
 
-  const branchNameRes = await prompts({
+  let baseBranch = 'develop';
+
+  if (['feature', 'bugfix'].includes(branch)) {
+    const res = await prompts({
+      type: "select",
+      name: "baseBranch",
+      message: "Pick base branch",
+      choices: [
+        { title: "develop", value: "develop" },
+        { title: "release", value: "release" },
+      ],
+      initial: 0,
+    });
+
+    baseBranch = res.baseBranch;
+  } else if (branch === 'hotfix') {
+    baseBranch = 'master';
+  }
+
+  const { branchName } = await prompts({
     type: "text",
-    name: "value",
+    name: "branchName",
     message: `Branch name?`,
     validate: (name) => {
       if (!name.trim()) {
@@ -83,26 +98,18 @@ async function createGitBranch() {
       return true;
     },
   });
-  const { value: branchName } = branchNameRes;
 
   if (!branchName) {
     process.exit(1);
   }
 
   const fullBranchName = `${branch}/${username}/${branchName}`;
-  const originBaseBranch = {
-    feature: "origin/develop",
-    bugfix: "origin/develop",
-    hotfix: "origin/master",
-  };
 
-  console.log(`Create branch: ${fullBranchName}`);
-
+  console.log(pc.cyan(`Create branch: ${fullBranchName}, base on: origin/${baseBranch}`));
   const { stdout: resGitCo } = await exec(
-    `git checkout -b ${fullBranchName} ${originBaseBranch[branch as keyof typeof originBaseBranch]}`
+    `git checkout -b ${fullBranchName} origin/${baseBranch}`
   );
-
-  console.log("Create done", resGitCo);
+  console.log(pc.green("Create done"), resGitCo);
 }
 
 async function run() {
