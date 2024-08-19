@@ -11,6 +11,7 @@ const exec = util.promisify(cp.exec);
 const program = new Commander.Command(packageJson.name)
   .version(packageJson.version)
   .option("-c, --clean", "Clean git redundancy branch")
+  .option("-r, --recent", "Show recent branch")
   .allowUnknownOption()
   .parse(process.argv);
 
@@ -36,10 +37,42 @@ async function cleanGitBranch() {
       .map((str) => str.replace("*", "").trim())
       .join(" ");
 
-    console.log(pc.cyan("The following branches will be deleted: \n"), deleteList);
+    console.log(
+      pc.cyan("The following branches will be deleted: \n"),
+      deleteList
+    );
     const execRes = await exec(`git branch -d ${deleteList}`);
     console.log(pc.green("Delete completed!"), execRes.stdout);
   }
+}
+
+async function showRecentBranch() {
+  console.log(pc.cyan("Recent branch:"));
+  const { stdout: resGitCo } = await exec(
+    `git reflog | grep "checkout: moving from" | head -n 5 | awk '{print $NF}' | sed 's/[^a-zA-Z0-9/_-]//g'`
+  );
+  const recentBranches = [...new Set((resGitCo || '')?.trim().split(/\s/g))].filter(Boolean);
+
+  if (!recentBranches.length) {
+    console.log(pc.red("No recent branch"));
+    return;
+  }
+
+  const { branch } = await prompts({
+    type: "select",
+    name: "branch",
+    message: "Pick branch",
+    choices: recentBranches.map((branch) => ({
+      title: branch,
+      value: branch,  
+    })),
+  })
+
+  const { stdout: resGitCheckout } = await exec(
+    `git checkout ${branch}`
+  );
+
+  console.log(pc.green("Checkout done"), resGitCheckout);
 }
 
 async function createGitBranch() {
@@ -67,9 +100,9 @@ async function createGitBranch() {
     process.exit(1);
   }
 
-  let baseBranch = 'develop';
+  let baseBranch = "develop";
 
-  if (['feature', 'bugfix'].includes(branch)) {
+  if (["feature", "bugfix"].includes(branch)) {
     const res = await prompts({
       type: "select",
       name: "baseBranch",
@@ -82,8 +115,8 @@ async function createGitBranch() {
     });
 
     baseBranch = res.baseBranch;
-  } else if (branch === 'hotfix') {
-    baseBranch = 'master';
+  } else if (branch === "hotfix") {
+    baseBranch = "master";
   }
 
   const { branchName } = await prompts({
@@ -105,19 +138,38 @@ async function createGitBranch() {
 
   const fullBranchName = `${branch}/${username}/${branchName}`;
 
-  console.log(pc.cyan(`Create branch: ${fullBranchName}, base on: origin/${baseBranch}`));
+  console.log(
+    pc.cyan(`Create branch: ${fullBranchName}, base on: origin/${baseBranch}`)
+  );
   const { stdout: resGitCo } = await exec(
     `git checkout -b ${fullBranchName} origin/${baseBranch}`
   );
   console.log(pc.green("Create done"), resGitCo);
+
+  const { shouldUpdateSubmodule } = await prompts({
+    type: "confirm",
+    name: "shouldUpdateSubmodule",
+    message: "Should update submodules?",
+  });
+
+  if (!shouldUpdateSubmodule) {
+    process.exit(1);
+  }
+
+  await exec(`git submodule update`);
+  console.log(pc.green("Update submodule done"));
 }
 
 async function run() {
-  if (options.clean) {
-    return cleanGitBranch();
+  const optionRuns: Record<string, () => Promise<void>> = {
+    clean: cleanGitBranch,
+    recent: showRecentBranch,
+    default: createGitBranch,
   }
+  const optionKey = Object.keys(options)?.[0] as keyof typeof optionRuns;
+  const strategy = optionRuns[optionKey || 'default'];
 
-  return createGitBranch();
+  return strategy();
 }
 
 run().catch((error) => {
