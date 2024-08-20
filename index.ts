@@ -9,6 +9,7 @@ import packageJson from "./package.json";
 const exec = util.promisify(cp.exec);
 
 const program = new Commander.Command(packageJson.name)
+  .description(packageJson.description)
   .version(packageJson.version)
   .option("-c, --clean", "Clean git redundancy branch")
   .option("-r, --recent", "Show recent branch")
