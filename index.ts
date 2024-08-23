@@ -6,7 +6,15 @@ import pc from "picocolors";
 import cp from "child_process";
 import packageJson from "./package.json";
 
-const exec = util.promisify(cp.exec);
+async function exec(cmd: string) {
+  const res = await util.promisify(cp.exec)(cmd);
+
+  if (res.stderr) {
+    throw res.stderr;  
+  }
+
+  return res.stdout;
+}
 
 const program = new Commander.Command(packageJson.name)
   .description(packageJson.description)
@@ -27,8 +35,8 @@ async function cleanGitBranch() {
   const execRes = await exec(
     'git branch --merged=origin/develop | grep -vE "(develop|release|master)"'
   );
-  const branchListString = execRes.stdout
-    ? execRes.stdout.toString().trim()
+  const branchListString = execRes
+    ? execRes.toString().trim()
     : "";
 
   if (branchListString) {
@@ -43,18 +51,38 @@ async function cleanGitBranch() {
       deleteList
     );
     const execRes = await exec(`git branch -d ${deleteList}`);
-    console.log(pc.green("Delete completed!"), execRes.stdout);
+    console.log(pc.green("Delete completed!"), execRes);
   }
 }
 
 async function showRecentBranch() {
   console.log(pc.cyan("Recent branch:"));
-  const { stdout: resGitCo } = await exec(
-    `git reflog | grep "checkout: moving from" | head -n 5 | awk '{print $NF}' | sed 's/[^a-zA-Z0-9/_-]//g'`
+  const resGitCo = await exec(
+    `git reflog | grep "checkout: moving from" | head -n 10 | awk '{print $NF}' | sed 's/[^a-zA-Z0-9/_-]//g'`
   );
-  const recentBranches = [...new Set((resGitCo || '')?.trim().split(/\s/g))].filter(Boolean);
+  const recentBranches = [...new Set((resGitCo || '')?.trim().split(/\s/g))].filter(Boolean); // remove duplicate
 
-  if (!recentBranches.length) {
+  const branchExists = async (branch: string) => {
+    try {
+      const result = (await exec(`git branch --list "${branch}"`));
+      return result.length > 0;
+    } catch (error) {
+      return false;      
+    }
+  }
+
+  const branchesWithExistence = await Promise.all(
+    recentBranches.map(async branch => ({
+      branch,
+      exists: await branchExists(branch),
+    }))
+  );
+
+  const existingBranches = branchesWithExistence
+    .filter(({ exists }) => exists)
+    .map(({ branch }) => branch);
+
+  if (!existingBranches.length) {
     console.log(pc.red("No recent branch"));
     return;
   }
@@ -63,13 +91,17 @@ async function showRecentBranch() {
     type: "select",
     name: "branch",
     message: "Pick branch",
-    choices: recentBranches.map((branch) => ({
+    choices: existingBranches.map((branch) => ({
       title: branch,
       value: branch,  
     })),
   })
 
-  const { stdout: resGitCheckout } = await exec(
+  if (!branch) {
+    process.exit(1);
+  }
+
+  const resGitCheckout = await exec(
     `git checkout ${branch}`
   );
 
@@ -78,7 +110,7 @@ async function showRecentBranch() {
 
 async function createGitBranch() {
   const resUserConfig = await exec("git config user.name");
-  const username = resUserConfig.stdout.toString().trim();
+  const username = resUserConfig.toString().trim();
 
   if (!username) {
     console.log(pc.red("Git username should be empty"));
@@ -142,7 +174,7 @@ async function createGitBranch() {
   console.log(
     pc.cyan(`Create branch: ${fullBranchName}, base on: origin/${baseBranch}`)
   );
-  const { stdout: resGitCo } = await exec(
+  const resGitCo = await exec(
     `git checkout -b ${fullBranchName} origin/${baseBranch}`
   );
   console.log(pc.green("Create done"), resGitCo);
