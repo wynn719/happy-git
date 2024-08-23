@@ -32,7 +32,7 @@ jobs:
           CONVENTIONAL_GITHUB_RELEASER_TOKEN: ${{ secrets.GIT_TOKEN }}
 
       - name: Build package
-        run: npm build
+        run: npm run build
 
       - name: Publish package
         run: npm publish --access public
