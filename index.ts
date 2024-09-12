@@ -1,26 +1,17 @@
 #!/usr/bin/env node
 import prompts from "prompts";
 import Commander from "commander";
-import util from "util";
 import pc from "picocolors";
-import cp from "child_process";
 import packageJson from "./package.json";
-
-async function exec(cmd: string) {
-  const res = await util.promisify(cp.exec)(cmd);
-
-  if (res.stderr) {
-    throw res.stderr;  
-  }
-
-  return res.stdout;
-}
+import { awaitSleep, exec } from "./src/utils";
 
 const program = new Commander.Command(packageJson.name)
   .description(packageJson.description)
   .version(packageJson.version)
-  .option("-c, --clean", "Clean git redundancy branch")
+  .option("-i, --init", "Create git branch")
   .option("-r, --recent", "Show recent branch")
+  .option("-hc, --hotfix_copy", "Create a new branch with hotfix commits")
+  .option("-c, --clean", "Clean git redundancy branch")
   .allowUnknownOption()
   .parse(process.argv);
 
@@ -32,12 +23,11 @@ process.on("SIGINT", handleSigTerm);
 process.on("SIGTERM", handleSigTerm);
 
 async function cleanGitBranch() {
+  await exec("git fetch --prune");
   const execRes = await exec(
     'git branch --merged=origin/develop | grep -vE "(develop|release|master)"'
   );
-  const branchListString = execRes
-    ? execRes.toString().trim()
-    : "";
+  const branchListString = execRes ? execRes.toString().trim() : "";
 
   if (branchListString) {
     const deleteList = branchListString
@@ -60,19 +50,21 @@ async function showRecentBranch() {
   const resGitCo = await exec(
     `git reflog | grep "checkout: moving from" | head -n 10 | awk '{print $NF}' | sed 's/[^a-zA-Z0-9/_-]//g'`
   );
-  const recentBranches = [...new Set((resGitCo || '')?.trim().split(/\s/g))].filter(Boolean); // remove duplicate
+  const recentBranches = [
+    ...new Set((resGitCo || "")?.trim().split(/\s/g)),
+  ].filter(Boolean); // remove duplicate
 
   const branchExists = async (branch: string) => {
     try {
-      const result = (await exec(`git branch --list "${branch}"`));
+      const result = await exec(`git branch --list "${branch}"`);
       return result.length > 0;
     } catch (error) {
-      return false;      
+      return false;
     }
-  }
+  };
 
   const branchesWithExistence = await Promise.all(
-    recentBranches.map(async branch => ({
+    recentBranches.map(async (branch) => ({
       branch,
       exists: await branchExists(branch),
     }))
@@ -93,17 +85,15 @@ async function showRecentBranch() {
     message: "Pick branch",
     choices: existingBranches.map((branch) => ({
       title: branch,
-      value: branch,  
+      value: branch,
     })),
-  })
+  });
 
   if (!branch) {
     process.exit(1);
   }
 
-  const resGitCheckout = await exec(
-    `git checkout ${branch}`
-  );
+  const resGitCheckout = await exec(`git checkout ${branch}`);
 
   console.log(pc.green("Checkout done"), resGitCheckout);
 }
@@ -174,6 +164,7 @@ async function createGitBranch() {
   console.log(
     pc.cyan(`Create branch: ${fullBranchName}, base on: origin/${baseBranch}`)
   );
+
   const resGitCo = await exec(
     `git checkout -b ${fullBranchName} origin/${baseBranch}`
   );
@@ -193,14 +184,56 @@ async function createGitBranch() {
   console.log(pc.green("Update submodule done"));
 }
 
+async function copyHotfixBranch() {
+  const currentBranch = await exec("git branch --show-current");
+
+  if (!/hotfix\/.*\/.*/.test(currentBranch.trim())) {
+    throw new Error(
+      "Not a valid hotfix branch name, use 'hotfix/xxx/xxx' format"
+    );
+  }
+
+  const newBranch = currentBranch.trim().replace("hotfix", "bugfix");
+
+  const cherryPickCommits = async () => {
+    await awaitSleep(1500);
+
+    console.log(
+      pc.green(
+        "Create a new branch base on origin/release, now cherry pick from " +
+          currentBranch
+      )
+    );
+    const commits = await exec(
+      `git log origin/master..${currentBranch} --pretty=format:"%H"`
+    );
+
+    for (const commitHash of commits.split("\n").reverse()) {
+      console.log(`Cherry-picking commit ${commitHash}...`);
+      await exec(`git cherry-pick ${commitHash}`);
+    }
+
+    console.log(pc.green("Cherry-pick done"));
+  };
+
+  await Promise.all([
+    exec(`git checkout -b ${newBranch} origin/release`),
+    cherryPickCommits(),
+  ]);
+
+  console.log(pc.green("Now you can push this branch to remote!"));
+}
+
 async function run() {
   const optionRuns: Record<string, () => Promise<void>> = {
+    init: createGitBranch,
+    hotfix_copy: copyHotfixBranch,
     clean: cleanGitBranch,
     recent: showRecentBranch,
     default: createGitBranch,
-  }
+  };
   const optionKey = Object.keys(options)?.[0] as keyof typeof optionRuns;
-  const strategy = optionRuns[optionKey || 'default'];
+  const strategy = optionRuns[optionKey || "default"];
 
   return strategy();
 }
