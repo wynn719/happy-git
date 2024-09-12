@@ -1,6 +1,6 @@
 {
   "name": "@nnyw/happy-git",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Collection command for my git operations.",
   "main": "index.js",
   "bin": {
